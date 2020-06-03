@@ -11,6 +11,8 @@ setup(
     install_requires=[],
     packages=find_packages(),
     entry_points={
-        "console_scripts": ["replace_spaces=replace_spaces:main"],
+        "console_scripts": [
+            "replace_spaces=script_collection.replace_spaces:main"
+        ],
     }
 )
