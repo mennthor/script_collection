@@ -12,7 +12,8 @@ setup(
     packages=find_packages(),
     entry_points={
         "console_scripts": [
-            "replace_spaces=script_collection.replace_spaces:main"
+            "replace_spaces=script_collection.replace_spaces:main",
+            "logbook_new_week_template=script_collection.logbook_new_week_template:main",
         ],
     }
 )
