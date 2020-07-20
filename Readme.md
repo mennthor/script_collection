@@ -1,5 +1,14 @@
 # script_collection
 
-Collection of entrypoint scripts.
+Collection of python scripts.
 
-Make available by `pip install -e .` and the entrypoints defined in `setup.py` should be available in the path.
+Install using `pip install -e .`.
+
+Entrypoints defined in `setup.py` are available if the Python package binary folder is on the path (check `python -m site` where it is).
+
+
+## Examples and tests
+
+In the `examples` folder there are some very non-exhaustive examples...
+
+There should be unit tests for some of the stuff in here, but there isn't...

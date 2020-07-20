@@ -28,7 +28,7 @@ _UNICODE_SPACES = [  # http://jkorpela.fi/chars/spaces.html
 ]
 
 
-def main():
+def _main():
     """ Entrypoint """
     parser = argparse.ArgumentParser(description="replace_spaces")
     parser.add_argument("file_path", nargs="+", help="File(s) to handle.")
@@ -65,4 +65,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _main()

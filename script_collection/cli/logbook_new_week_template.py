@@ -1,7 +1,7 @@
 import datetime
 
 
-TEMPLATE = """### Week KW{0:}
+_TEMPLATE = """### Week KW{0:}
 
 #### {1:}-{2:02d}-{7:02d} (Monday)
 _NOENTRY_
@@ -19,7 +19,7 @@ _NOENTRY_
 _NOENTRY_"""
 
 
-def main():
+def _main():
     today = datetime.date.today()
     year, week, _ = today.isocalendar()
     # From: https://stackoverflow.com/questions/17277002
@@ -30,8 +30,8 @@ def main():
     days = [wd.day for wd in weekdates]
     insert = months + days
 
-    print(TEMPLATE.format(week, year, *insert))
+    print(_TEMPLATE.format(week, year, *insert))
 
 
 if __name__ == "__main__":
-    main()
+    _main()
