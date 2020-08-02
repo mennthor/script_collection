@@ -34,6 +34,55 @@ def prob2sigma(p):
     return scs.norm.ppf(p + (1. - p) / 2.)  # (1-p)/2 in the right tail
 
 
+def mean_scipy_stats_pdf(bins, frozen_dist, steps_pre=False):
+    """
+    Calculates the mean PDF values for the given binning of a
+    `scipy.stats.rv_continuous` distribution by averaging the integral per bin
+    using the provided CDF function.
+    This can be used to plot an expected PDF alongside a data histogram without
+    having to compare an unbinned PDF with the histogram bars.
+
+    Parameters
+    ----------
+    bins : array-like
+        Bins to calculate the average PDF in, should be same as used for the
+        histogram.
+    frozen_dist : scipy.stats.rv_continuous
+        A 'frozen' scipy continuous random variable class. Is called as
+        `dist.cdf(x)`, where `x` is derived from the bins. The shape parameters
+        have to be fixed in the distribution object before calling this function
+        to avoid any ambiguities (eg. `fd = scipy.stats.chi2(2, 0, 1)` for a
+        chi2 distribution with `df=2`. and `loc=1`, `scale=0`).
+    dist_params : tuple
+        Further tuple of arguments used by the `dist.cdf` method. The number of
+        arguments and the correct order is documented in the
+        `scipy.stats.rv_continuous` docs. For example, for a `chi2` they are
+        `(df, loc, scale)`.
+    steps_pre : bool
+        If `True` duplicates the first entry of the averaged PDF array. This can
+        be used in combination with
+        `matplotlib.pyplot.plot(..., drawstyle='steps-pre')` to comfortably plot
+        the averaged PDF in an existing plot for example.
+        If `False`, the the length of the averaged PDF array is one less than
+        the bin array. (default: `False`)
+
+    Returns
+    -------
+    binned_pdf : array-like
+        The average PDF in the given bins. Size is `len(bins) - 1` if
+        `steps_pre` is `False`, otherwise it is `len(bins)` and the first entry
+        is duplicated for direct usage in plotting with `drawstyle='steps-pre'`.
+    """
+    bins = np.atleast_1d(bins)
+    lo = frozen_dist.cdf(bins[:-1])
+    hi = frozen_dist.cdf(bins[1:])
+    dx = np.diff(bins)
+    average = (hi - lo) / dx
+    if steps_pre:
+        return np.r_[average[0], average]
+    return average
+
+
 def standardize_nd_sample(sam, mean=None, cov=None,
                           cholesky=True, ret_stats=False, diag=False):
     r"""
