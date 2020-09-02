@@ -6,7 +6,7 @@ ndarray utility methods.
 
 import numpy as np
 
-from ..algorithms import get_perms
+from ..algorithms.math import get_perms
 
 
 def idx2rowcol(idx, ncols):
