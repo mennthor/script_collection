@@ -21,6 +21,7 @@ setup(
         "console_scripts": [
             "replace_spaces=script_collection.cli.replace_spaces:_main",
             "logbook_new_week_template=script_collection.cli.logbook_new_week_template:_main",
+            "log_ps=script_collection.cli.log_ps:_main",
         ],
     }
 )
