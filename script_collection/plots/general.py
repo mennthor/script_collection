@@ -145,3 +145,52 @@ def hist_from_counts(h, bins, ax=None, **kwargs):
     mids = 0.5 * (bins[:-1] + bins[1:])
     ax.hist(mids, bins, weights=h, **kwargs)
     return ax
+
+
+def hist_outline(x, ax=None, outl_kwargs={}, hist_kwargs={}):
+    """
+    Creates a 1D histogram exactly like `matplotlib.pyplot.hist` but with an
+    additional outline along the histogram bars.
+    
+    Parameters
+    ----------
+    x : array or sequence of arrays
+        Input values exactly as in `matplotlib.pyplot.hist`.
+    ax : `matplotlib.axes.Axes`
+        The axes to add the histogramm to.
+    outl_kwargs : dict of keyword args
+        Arguments passed to `matplotlib.pyplot.plot` to control the outline
+        looks. The key 'drawstyle' is always overwritten with 'steps-pre'.
+    hist_kwargs : dict of keyword args
+        Arguments passed to `matplotlib.pyplot.hist` controlling the histogram
+        looks.
+        
+    Returns
+    -------
+    h, n, patches
+        The unaltered return values of `matplotlib.pyplot.hist` (histogram
+        array, bin array and patch collection for the drawn bars).
+    lc
+        The unaltered return value of `matplotlib.pyplot.plot` (line collection
+        for the drawn line).
+
+    Example
+    -------
+    >>> import numpy as np
+    >>> import matplotlib.pyplot as plt
+    >>> x = np.random.exponential(size=1000)
+    >>> fig, ax = plt.subplots(1, 1)
+    >>> out = hist_outline(
+            x, ax, outl_kwargs={"c": "k", "lw": 2},
+            hist_kwargs={"color": "C7","bins": 50, "density": True})
+    >>> ax.set_yscale("log")
+    >>> plt.show()
+    """
+    # Make the histogram
+    h, b, pc = ax.hist(x, **hist_kwargs)
+    
+    # Draw the outline
+    outl_kwargs["drawstyle"] = "steps-pre"
+    lc = ax.plot(np.r_[b[0], b, b[-1]], np.r_[0, h[0], h, 0], **outl_kwargs)
+    
+    return h, b, pc, lc
