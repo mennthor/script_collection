@@ -6,6 +6,8 @@ Collection of plotting functions for pyplot functionality in general
 
 import os as _os
 import subprocess as subprocess
+
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -164,7 +166,7 @@ def hist_outline(x, ax=None, outl_kwargs={}, hist_kwargs={}):
     hist_kwargs : dict of keyword args
         Arguments passed to `matplotlib.pyplot.hist` controlling the histogram
         looks.
-        
+			
     Returns
     -------
     h, n, patches
