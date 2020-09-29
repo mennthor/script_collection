@@ -257,6 +257,15 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
         for each given expectation value.
     ax : matplotlib.axes.Axes
         The axis the plot was drawn to.
+
+    Example
+    -------
+    >>> import matplotlib.pyplot as plt
+    >>> counts = [0, 0, 3, 3, 2, 0, 6, 7, 9, 10, 0, 13, 18, 24, 30]
+    >>> mus = [1, 2, 3, 4, 5, 0, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    >>> intervals, ax = add_poisson_residual_plot(
+    >>>     counts=counts, mus=mus, alphas=[0.68, 0.95, 0.99])
+    >>> plt.show()
     """
     mus = np.atleast_1d(mus)
     counts = np.atleast_1d(counts).astype(int)
