@@ -149,11 +149,11 @@ def hist_from_counts(h, bins, ax=None, **kwargs):
     return ax
 
 
-def hist_outline(x, ax=None, outl_kwargs={}, hist_kwargs={}):
+def hist_outline(x, ax, outl_kwargs={}, hist_kwargs={}):
     """
     Creates a 1D histogram exactly like `matplotlib.pyplot.hist` but with an
     additional outline along the histogram bars.
-    
+
     Parameters
     ----------
     x : array or sequence of arrays
@@ -163,13 +163,15 @@ def hist_outline(x, ax=None, outl_kwargs={}, hist_kwargs={}):
     outl_kwargs : dict of keyword args
         Arguments passed to `matplotlib.pyplot.plot` to control the outline
         looks. The key 'drawstyle' is always overwritten with 'steps-pre'.
+        If color and alpha arguments are not given, the ones from the histogram
+        are used (if given there) and the alpha is increased by a factor of 1.5.
     hist_kwargs : dict of keyword args
         Arguments passed to `matplotlib.pyplot.hist` controlling the histogram
         looks.
-			
+
     Returns
     -------
-    h, n, patches
+    h, b, pc
         The unaltered return values of `matplotlib.pyplot.hist` (histogram
         array, bin array and patch collection for the drawn bars).
     lc
@@ -190,9 +192,21 @@ def hist_outline(x, ax=None, outl_kwargs={}, hist_kwargs={}):
     """
     # Make the histogram
     h, b, pc = ax.hist(x, **hist_kwargs)
-    
+
+    # Use hist color and alpha of not explicetly given in 'outl_kwargs'
+    if not any(k in outl_kwargs for k in ("c", "color")):
+        try:
+            outl_kwargs["color"] = hist_kwargs["color"]
+        except KeyError:
+            pass  # Not present in hist_kwargs either
+    if "alpha" not in outl_kwargs:
+        try:
+            outl_kwargs["alpha"] = hist_kwargs["alpha"] * 1.5
+        except KeyError:
+            pass  # Not present in hist_kwargs either
+
     # Draw the outline
     outl_kwargs["drawstyle"] = "steps-pre"
     lc = ax.plot(np.r_[b[0], b, b[-1]], np.r_[0, h[0], h, 0], **outl_kwargs)
-    
+
     return h, b, pc, lc
