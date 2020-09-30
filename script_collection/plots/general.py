@@ -216,8 +216,9 @@ def hist_outline(x, ax, outl_kwargs={}, hist_kwargs={}):
     return h, b, pc, lc
 
 
-def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
-                              colors="YlOrRd_r", ax=None):
+def add_poisson_residual_plot(
+    counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
+        colors="YlOrRd_r", ax=None, ylabel_kw={}, plot_kw={}):
     """
     Adds plot to given axis that shows the data counts location in the central
     poisson interval region for the corrsponding expectation in the same bin and
@@ -339,8 +340,11 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
         alpha_lo = alpha_lo / alpha_mus  # [0, a_mu]->[0, 1]
         # [a_mu, 1]->[0, 1]
         alpha_hi = (alpha_hi - alpha_mus) / (1. - alpha_mus)
-        assert not np.any(alpha_lo < 0) and not np.any(alpha_lo > 1)
-        assert not np.any(alpha_hi < 0) and not np.any(alpha_hi > 1)
+        alpha_lo[np.isclose(alpha_lo, 0.)] = 0.  # Some numerics at lower edge
+        assert not np.any(alpha_lo[~mask_alpha_mu_zero] < 0)
+        assert not np.any(alpha_lo[~mask_alpha_mu_zero] > 1)
+        assert not np.any(alpha_hi[~mask_alpha_mu_zero] < 0)
+        assert not np.any(alpha_hi[~mask_alpha_mu_zero] > 1)
 
         # Clip invalid logs to small float (only happens when lo is at 0.)
         inv_log_mask = np.isclose(alpha_lo, 0.)
@@ -380,6 +384,34 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
     ax.axhline(0, 1, 0, c=_c, lw=2, ls="-")
 
     # Plot data points as dots w/o errors and in the alpha units from above.
+    # Override defaults if given (remove some non-unique settings first)
+    markers = {"marker": "o", "marker_lo": "v", "marker_hi": "^",
+               "marker_zero": "o"}  # Keep separate
+    plot_kwargs = {
+        "color": "w",
+        "ls": "",
+        "ms": "10",
+        "markeredgewidth": 1.5,
+        "markeredgecolor": "k",
+    }
+    plot_kwargs.update(plot_kw)
+    # Replace shortcuts to avoid double settings (there is a mpl decorator for
+    # this, but in which module is it?)
+    _repl = {
+        "mew": "markeredgewidth", "mec": "markeredgecolor",
+        "mfc": "markerfacecolor", "m": "marker", "linestyle": "ls",
+        "markersize": "ms", "c": "color"}
+    for k, v in _repl.items():
+        if k in plot_kwargs:
+            plot_kwargs[v] = plot_kwargs[k]
+            del plot_kwargs[k]
+    _del = []
+    for name, val in plot_kwargs.items():  # Update marker dict separately
+        if name in markers:
+            markers[name] = val
+            _del.append(name)
+    for name in _del:
+        del plot_kwargs[name]
     # No data point is plotted (is 0 anyway) where expectation is zero
     alpha_mus = alpha_mus[~mask_alpha_mu_zero]
     alpha_cnts = scs.poisson.cdf(counts, mus)[~mask_alpha_mu_zero]
@@ -392,29 +424,29 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
     alpha_cnts_hi = alpha_cnts[m_hi]
     alpha_cnts_hi = (alpha_cnts_hi - alpha_mus[m_hi]) / (1. - alpha_mus[m_hi])
     log_alpha_cnts_hi_inv = -1. * np.log10(1. - alpha_cnts_hi)
-    # Outside range? Plot with diamond up at upper bound
+    # Outside range? Plot with 'marker_hi' at upper bound, else use 'marker'
     _m = (log_alpha_cnts_hi_inv > max_log_range)
-    ax.plot(mids[m_hi][~_m], log_alpha_cnts_hi_inv[~_m], color="w", ls="",
-            ms="10", marker="o", markeredgewidth=1.5, markeredgecolor="k")
-    ax.plot(mids[m_hi][_m], np.sum(_m) * [max_log_range], color="w", ls="",
-            ms="10", marker="^", markeredgewidth=1.5, markeredgecolor="k")
+    ax.plot(mids[m_hi][~_m], log_alpha_cnts_hi_inv[~_m],
+            marker=markers["marker"], **plot_kwargs)
+    ax.plot(mids[m_hi][_m], np.sum(_m) * [max_log_range],
+            marker=markers["marker_hi"], **plot_kwargs)
     # Case 2/2: Counts alpha < alpha_mu
     m_lo = (alpha_cnts < alpha_mus)
     # Transform to log vals
     alpha_cnts_lo = alpha_cnts[m_lo]
     alpha_cnts_lo = alpha_cnts_lo / alpha_mus[m_lo]
     log_alpha_cnts_lo_inv = np.log10(alpha_cnts_lo)
-    # Outside range? Plot with diamond at lower bound
+    # Outside range? Plot with 'marker_lo' at lower bound
     _m = (log_alpha_cnts_lo_inv < -max_log_range)
-    ax.plot(mids[m_lo][_m], np.sum(_m) * [-max_log_range], color="w", ls="",
-            ms="10", marker="v", markeredgewidth=1.5, markeredgecolor="k")
-    # Zero counts but in range? You can give them another marker if you like...
+    ax.plot(mids[m_lo][_m], np.sum(_m) * [-max_log_range],
+            marker=markers["marker_lo"], **plot_kwargs)
+    # Zero counts but in range? Use 'marker_zero' at alpha, else use 'marker'
     _m0 = np.logical_and(~_m, counts[~mask_alpha_mu_zero][m_lo] == 0)
-    ax.plot(mids[m_lo][_m0], log_alpha_cnts_lo_inv[_m0], color="w", ls="",
-            ms="10", marker="o", markeredgewidth=1.5, markeredgecolor="k")
+    ax.plot(mids[m_lo][_m0], log_alpha_cnts_lo_inv[_m0],
+            marker=markers["marker_zero"], **plot_kwargs)
     _mrest = np.logical_and(~_m, counts[~mask_alpha_mu_zero][m_lo] > 0)
-    ax.plot(mids[m_lo][_mrest], log_alpha_cnts_lo_inv[_mrest], color="w", ls="",
-            ms="10", marker="o", markeredgewidth=1.5, markeredgecolor="k")
+    ax.plot(mids[m_lo][_mrest], log_alpha_cnts_lo_inv[_mrest],
+            marker=markers["marker"], **plot_kwargs)
 
     # Plot setting
     # Build custom ticks in logspace
@@ -425,7 +457,8 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
         return "$10^{{-{:.0f}}}$".format(np.abs(x))
 
     ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(ticker))
-    fig.canvas.draw()  # This sets the ticklabels
+    # This sets the ticklabels, so we can get their widths below
+    ax.get_figure().canvas.draw()
 
     # Build split ylabel
     # Set empty and custom text as proper label
@@ -438,14 +471,21 @@ def add_poisson_residual_plot(counts, mus, alphas=[0.68, 0.95, 0.99], bins=None,
         bb = text.get_window_extent(renderer=renderer)
         bbt = matplotlib.transforms.Bbox(ax.transAxes.inverted().transform(bb))
         _xmin_ax = min(_xmin_ax, bbt.bounds[0])
-    ax.text(
-        _xmin_ax, 0.75, r"$(1 - \alpha)\ /\ \alpha_{{\mu}}$",
-        rotation=90, ha="right", va="center", transform=ax.transAxes)
-    ax.text(
-        _xmin_ax, 0.25, r"$\alpha\ /\ \alpha_{{\mu}}$",
-        rotation=90, ha="right", va="center", transform=ax.transAxes)
+    # Override defaults if given
+    ylabel_kwargs = {
+        "x": _xmin_ax,
+        "y": 0.5,
+        "s": (r"$\alpha / \alpha_{{\mu}} \enspace\leftrightarrow\enspace "
+              r"p / \alpha_{{\mu}}$"),
+        "rotation": 90,
+        "ha": "center",
+        "va": "center",
+        "transform": ax.transAxes,
+    }
+    ylabel_kwargs.update(ylabel_kw)
+    ax.text(**ylabel_kwargs)
     ax.set_xlim(bins[0], bins[-1])
-    max_log_range = np.round(max_log_range, decimals=1) + 0.1
+    max_log_range = (np.round(max_log_range, decimals=1) + 0.1) * 1.1
     ax.set_ylim(-max_log_range, max_log_range)
 
     return intervals, ax
