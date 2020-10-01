@@ -15,11 +15,35 @@ import colorsys
 def dist_poisson(counts, alphas, **kwargs):
     """
     Poisson central intervals compliant with `add_residual_plot`.
+
+    Parameters
+    ----------
+    counts : array-like
+        The actual data counts.
+    alphas : array-like
+        Confidence levels for the central intervals that shall be computed.
+    kwargs :
+        'mus' : array-like
+            Expectation values for the poisson distribution.
+            Must have same length as `counts`.
+
+    Returns
+    -------
+    alpha_cnts : array-like
+        CDF value for each count.
+    alpha_expect : array-like
+        CDF value for each expectation value for the corresponding distribution
+        used per count (used for scaling in `add_residual_plot`).
+    alpha_intervals : list
+        List of low and high interval CDF values for the corresponding
+        distribution used per count. For each alpha, the list contains a tuple
+        `(lo, hi)` with `lo`, `hi` being arrays of CDF values with length
+        `len(counts)`.
     """
     mus = kwargs["mus"]
     # Get alphas for counts and for the expectation values
     alpha_cnts = scs.poisson.cdf(counts, mus)
-    alpha_mus = scs.poisson.cdf(mus, mus)
+    alpha_expect = scs.poisson.cdf(mus, mus)
     # Create intervals for each given alpha
     alphas = np.unique(alphas)
     if not np.all(np.logical_and(alphas > 0, alphas < 1)):
@@ -37,22 +61,46 @@ def dist_poisson(counts, alphas, **kwargs):
         alpha_hi = scs.poisson.cdf(hi, mus)
         alpha_intervals.append((alpha_lo, alpha_hi))
 
-    return alpha_cnts, alpha_mus, alpha_intervals
+    return alpha_cnts, alpha_expect, alpha_intervals
 
 
 def dist_norm(counts, alphas, **kwargs):
     """
     Gaussian central intervals compliant with `add_residual_plot`.
     Using sqrt(N) residuals per bin.
+
+    Parameters
+    ----------
+    counts : array-like
+        The actual data counts.
+    alphas : array-like
+        Confidence levels for the central intervals that shall be computed.
+    kwargs :
+        'mean' : array-like
+            Expectation values for the poisson distribution.
+            Must have same length as `counts`.
+
+    Returns
+    -------
+    alpha_cnts : array-like
+        CDF value for each count.
+    alpha_expect : array-like
+        CDF value for each expectation value for the corresponding distribution
+        used per count (used for scaling in `add_residual_plot`).
+    alpha_intervals : list
+        List of low and high interval CDF values for the corresponding
+        distribution used per count. For each alpha, the list contains a tuple
+        `(lo, hi)` with `lo`, `hi` being arrays of CDF values with length
+        `len(counts)`.
     """
     mean = kwargs["mean"]
     stddev = np.sqrt(mean)
     valid = (stddev > 0.)
     # Get alphas for counts and for the expectation values
     alpha_cnts = np.zeros(len(counts), dtype=float)
-    alpha_mus = np.zeros_like(alpha_cnts)
+    alpha_expect = np.zeros_like(alpha_cnts)
     alpha_cnts[valid] = scs.norm.cdf(counts[valid], mean[valid], stddev[valid])
-    alpha_mus[valid] = scs.norm.cdf(mean[valid], mean[valid], stddev[valid])
+    alpha_expect[valid] = scs.norm.cdf(mean[valid], mean[valid], stddev[valid])
     # Create intervals for each given alpha
     alphas = np.unique(alphas)
     if not np.all(np.logical_and(alphas > 0, alphas < 1)):
@@ -68,7 +116,7 @@ def dist_norm(counts, alphas, **kwargs):
         hi[valid] = scs.norm.cdf(hi[valid], mean[valid], stddev[valid])
         alpha_intervals.append((lo, hi))
 
-    return alpha_cnts, alpha_mus, alpha_intervals
+    return alpha_cnts, alpha_expect, alpha_intervals
 
 
 def add_residual_plot(
@@ -122,12 +170,24 @@ def add_residual_plot(
         The axis on which the plot was drawn.
     alpha_cnts : array-like
         CDF values for each counts from the given distribution.
-    alpha_mus : array-like
+    alpha_expect : array-like
         CDF values for the expectation values per bin from the given
         distribution.
     alpha_intervals : array-like
         CDF values for each `(lo, hi)` edges for all bins per given intervall
         from the given distribution.
+
+    Example
+    -------
+    >>> from script_collection.plots.residuals import (
+    >>>     add_residual_plot, dist_poisson)
+    >>> import matplotlib.pyplot as plt
+    >>> counts = np.array([0, 0, 3, 3, 2, 0, 6, 7, 9, 10, 0, 13, 18, 24, 130])
+    >>> mus = np.array([1, 2, 3, 4, 5, 0, 7, 8, 9, 10, 11, 12, 13, 14, 100])
+    >>> ax, alpha_cnts, alpha_expect, alpha_intervals = add_residual_plot(
+    >>>     counts=counts, dist=dist_poisson, alphas=[0.68, 0.95, 0.99],
+    >>>     dist_kwargs=dict(mus=mus))
+    >>> plt.show()
     """
     CLIP_LOG = 1000  # Clipping log(0) so they still show, but are not inf
 
@@ -163,11 +223,12 @@ def add_residual_plot(
 
     # #########################################################################
     # Get CDF values for counts, expectations (for scaling) and intervals
-    alpha_cnts, alpha_mus, alpha_intervals = dist(counts, alphas, **dist_kwargs)
+    alpha_cnts, alpha_expect, alpha_intervals = dist(
+        counts, alphas, **dist_kwargs)
     if np.any(np.logical_or(alpha_cnts < 0., alpha_cnts > 1.)):
         raise ValueError(
             "`dist` returned CDF values outside [0, 1] for the given counts.")
-    if np.any(np.logical_or(alpha_mus < 0., alpha_mus > 1.)):
+    if np.any(np.logical_or(alpha_expect < 0., alpha_expect > 1.)):
         raise ValueError(
             "`dist` returned CDF values outside [0, 1] for the expectations.")
     for alpha, (los, his) in zip(alphas, alpha_intervals):
@@ -190,9 +251,9 @@ def add_residual_plot(
             # To have a consistent y-scale and to center the expectation value,
             # we scale by the alpha of the expectation. Clip to avoid numerical
             # errors. Lo: [0, a_mu]->[0, 1], Hi: [a_mu, 1]->[0, 1]
-            alpha_lo = np.clip(alpha_lo / alpha_mus, 0., 1.)
+            alpha_lo = np.clip(alpha_lo / alpha_expect, 0., 1.)
             alpha_hi = np.clip(
-                (alpha_hi - alpha_mus) / (1. - alpha_mus), 0., 1.)
+                (alpha_hi - alpha_expect) / (1. - alpha_expect), 0., 1.)
             # Push to zero from inside if small enough (default is below 7
             # sigma). This avoids having numerics blow up the limits too large
             alpha_lo[np.isclose(alpha_lo, 0., atol=atol)] = 0.
@@ -272,15 +333,16 @@ def add_residual_plot(
         del plot_kwargs[name]
 
     # No data point is plotted when there isn't a valid interval
-    alpha_mus = alpha_mus[valid_intervals]
+    alpha_expect = alpha_expect[valid_intervals]
     alpha_cnts = np.clip(alpha_cnts[valid_intervals], 0., 1.)
     mids = 0.5 * (bins[1:] + bins[:-1])[valid_intervals]
 
     # Case 1/2: Counts alpha >= alpha_mu
-    m_hi = (alpha_cnts >= alpha_mus)
+    m_hi = (alpha_cnts >= alpha_expect)
     # Transform to inverted log vals
     alpha_cnts_hi = alpha_cnts[m_hi]
-    alpha_cnts_hi = (alpha_cnts_hi - alpha_mus[m_hi]) / (1. - alpha_mus[m_hi])
+    alpha_cnts_hi = (
+        alpha_cnts_hi - alpha_expect[m_hi]) / (1. - alpha_expect[m_hi])
     log_alpha_cnts_hi_inv = -1. * np.log10(1. - alpha_cnts_hi)
     # Outside range? Plot with 'marker_hi' at upper bound, else use 'marker'
     _m = (log_alpha_cnts_hi_inv > max_log_range)
@@ -290,10 +352,10 @@ def add_residual_plot(
             marker=markers["marker_hi"], **plot_kwargs)
 
     # Case 2/2: Counts alpha < alpha_mu
-    m_lo = (alpha_cnts < alpha_mus)
+    m_lo = (alpha_cnts < alpha_expect)
     # Transform to log vals
     alpha_cnts_lo = alpha_cnts[m_lo]
-    alpha_cnts_lo = alpha_cnts_lo / alpha_mus[m_lo]
+    alpha_cnts_lo = alpha_cnts_lo / alpha_expect[m_lo]
     log_alpha_cnts_lo_inv = np.log10(alpha_cnts_lo)
     # Outside range? Plot with 'marker_lo' at lower bound
     _m = (log_alpha_cnts_lo_inv < -max_log_range)
@@ -325,4 +387,4 @@ def add_residual_plot(
     # 1.05 makes under-/overflow markers fully visible at the edge (trial&error)
     ax.set_ylim(-max_log_range * 1.05, max_log_range * 1.05)
 
-    return ax, alpha_cnts, alpha_mus, alpha_intervals
+    return ax, alpha_cnts, alpha_expect, alpha_intervals
