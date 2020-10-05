@@ -15,6 +15,7 @@ setup(
         "matplotlib",
         "tables",
         "scikit-learn",
+        "emcee",
     ],
     packages=find_packages(),
     entry_points={

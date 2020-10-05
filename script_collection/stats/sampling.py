@@ -5,7 +5,9 @@ Contains random sampling methods.
 """
 import numpy as np
 import scipy.optimize as sco
+import scipy.stats as scs
 from sklearn.utils import check_random_state
+import emcee
 
 
 def random_choice(rndgen, CDF, size=None):
@@ -245,3 +247,138 @@ def power_law_sampler(gamma, xlow, xhig, n, random_state=None):
         radicant = (u * (xhig**(1. - gamma) - xlow**(1. - gamma))
                     + xlow**(1. - gamma))
         return radicant**(1. / (1. - gamma))
+
+
+def create_binned_poisson_llh_sampler(data, bins, components, log_prior, seeds,
+                                      nwalkers, comp_kwargs={}, **emcee_kwargs):
+    """
+    Creates an `emcee.EnsembleSampler` with a multi-component, binned Poisson
+    LLH being ready to sample.
+
+    Parameters
+    ----------
+    data : array-like
+        Data sample to histogram.
+    bins : array-like or int
+        Given to `numpy.histogram`. Each bin is considered in the fitting
+        procedure.
+    components : dict
+        Dictionary of callables. Each callable for a given `name` is called as
+        `components[name](params, bins, **comp_kwargs[name])`, where the correct
+        parameter array is inferred from `seeds[name]` and is an array
+        describing a single point in the parameter space of that component.
+        Each callable is expected to return the expectation value in `[0, inf]`
+        in each bin. Additional arguments are passed via `comp_kwargs[name]`.
+    log_prior : callable
+        Log of thr prior distriution, is added to the Poisson logLLH. Is called
+        as `log_prior(params, **comp_kwargs)`, where `params` is a dict with the
+        parameter arrays as values for each component name and `comp_kwargs` is
+        the full dict of extra keyword arguments which can optionally be given
+        to this method.
+        Make sure the resulting posterior LLH is properly normalized up to a
+        constant value. The prior can also be used for constraints and
+        boundaries by returning `-np.inf` for a forbidden parameter range or
+        combination.
+    nwalkers : int
+        The number of walkers in the ensemble.
+    seeds : dict
+        Initial parameter values for each component. Each seed must be given as
+        a 2D array with shape `nwalkers, ndim` containing one seed point per
+        `emcee` walker for the selected component.
+    comp_kwargs : dict of dicts, optional
+        Additional keyword arguments for each component and prior callable.
+        (default: `{}`)
+    **emcee_kwargs :
+        Additional keyword arguments passed directly to the underlying
+        `emcee.EnsembleSampler`.
+
+    Returns
+    -------
+    TODO
+    """
+    # Check input parameters
+    if nwalkers < 1:
+        raise ValueError("Need at least a single walker.")
+
+    for k in ["ndim", "log_prob_fn", "args", "kwargs"]:
+        if k in emcee_kwargs:
+            raise KeyError("'{}' is an emcee.EnsembleSample setting that is "
+                           "set internally and can't be overriden.")
+
+    # Construct the proper parameter arrays for the sampling
+    x0 = []
+    ndim = {}
+    slices = {}
+    _offset = 0
+    for name in components.keys():
+        if name == "_GLOBAL_":
+            raise ValueError("A component cannot be named '_GLOBAL_'. This key "
+                             "is reserved for a global prior component.")
+        if name not in seeds:
+            raise ValueError(
+                "Missing initial values for component '{}'".format(name))
+        _seeds = np.atleast_2d(seeds[name])
+        if not _seeds.shape[0] == nwalkers:
+            raise ValueError(
+                "Initial values for component '{}' does not contain as many "
+                "seed points as requested walkers.")
+        ndim[name] = _seeds.shape[1]
+        x0.append(seeds[name])
+        # Slice selects the matching params from the merged param array later
+        slices[name] = slice(_offset, _offset + ndim[name])
+        _offset += ndim[name]
+        # Fill comp_kwargs with empty dicts to avoid checks in the LLH later
+        if name not in comp_kwargs:
+            comp_kwargs[name] = {}
+
+    # All seeds concatendated to a single point per walker in the correct order
+    x0 = np.hstack(x0)
+
+    # The data histogram stays fixed during the whole procedure
+    hist, bins = np.histogram(data, bins)
+
+    # This avoids -inf values when an expectation is 0. Clip it to lowest value
+    CLIP = -np.floor(np.log10(abs(np.finfo(float).min))) - 1
+    while np.isinf(scs.poisson.logpmf(1, 10**(CLIP))):
+        CLIP += 1
+    CLIP = 10**(CLIP + 1)
+
+    # This is the logLLH that gets sampled
+    def log_llh(params, slices, hist, bins, components, log_prior,
+                comp_kwargs, CLIP):
+        # Evaluate prior first, because it contains boundary checks. If the
+        # prior is already -inf, don't bother evaluating the actual function
+        p_dict = {k: params[s] for k, s in slices.items()}
+        logprior = log_prior(p_dict, **comp_kwargs)
+        if np.isinf(logprior):
+            return -np.inf  # Return early, unreachable parameter point
+
+        # Distribute proper params to each component. Each component is required
+        # to return an array of expectation values >=0, one for each bin.
+        mus = np.zeros(len(bins) - 1, dtype=float) + CLIP
+        for name, func in components.items():
+            _p = params[slices[name]]
+
+            # Compute expectations
+            mus_comp = func(_p, bins, **comp_kwargs[name])
+            if np.any(mus_comp < 0):
+                raise ValueError(
+                    "Component '{}' returned expectation values <0 for "
+                    "parameters {}.".format(
+                        name, ", ".join(["{:.3g}".format(pi) for pi in _p])))
+            mus += mus_comp
+
+        # Compute Poisson logLLH and add log prior for the final log posterior
+        logllh = np.sum(scs.poisson.logpmf(hist, mus))
+        return logllh + logprior
+
+    # Create the sampler
+    sampler = emcee.EnsembleSampler(
+        nwalkers=nwalkers,
+        ndim=sum(ndim.values()),
+        log_prob_fn=log_llh,
+        args=(slices, hist, bins, components, log_prior, comp_kwargs, CLIP),
+    )
+
+    # The slices allow matching the resulting parameter arrays to the components
+    return sampler, x0, slices
