@@ -5,118 +5,10 @@ professional approach.
 """
 
 import numpy as np
-import scipy.stats as scs
 import matplotlib.pyplot as plt
 import matplotlib.colors
 import matplotlib.ticker
 import colorsys
-
-
-def dist_poisson(counts, alphas, **kwargs):
-    """
-    Poisson central intervals compliant with `add_residual_plot`.
-
-    Parameters
-    ----------
-    counts : array-like
-        The actual data counts.
-    alphas : array-like
-        Confidence levels for the central intervals that shall be computed.
-    kwargs :
-        'mus' : array-like
-            Expectation values for the poisson distribution.
-            Must have same length as `counts`.
-
-    Returns
-    -------
-    alpha_cnts : array-like
-        CDF value for each count.
-    alpha_expect : array-like
-        CDF value for each expectation value for the corresponding distribution
-        used per count (used for scaling in `add_residual_plot`).
-    alpha_intervals : list
-        List of low and high interval CDF values for the corresponding
-        distribution used per count. For each alpha, the list contains a tuple
-        `(lo, hi)` with `lo`, `hi` being arrays of CDF values with length
-        `len(counts)`.
-    """
-    mus = kwargs["mus"]
-    # Get alphas for counts and for the expectation values
-    alpha_cnts = scs.poisson.cdf(counts, mus)
-    alpha_expect = scs.poisson.cdf(mus, mus)
-    # Create intervals for each given alpha
-    alphas = np.unique(alphas)
-    if not np.all(np.logical_and(alphas > 0, alphas < 1)):
-        raise ValueError("Interval alphas must be in (0, 1).")
-    alpha_intervals = []
-    for alpha in alphas:
-        lo, hi = scs.poisson.interval(alpha, mus)
-        # Because the Poisson distribution is discrete, we have to remove
-        # the lower border of the intervall manually, otherwise too much
-        # probability is included (the intervals are inclusive in both
-        # directions, but the CDF is right inclusive, so for low we need to
-        # remove the endpoint).
-        alpha_lo = np.clip(
-            scs.poisson.cdf(lo, mus) - scs.poisson.pmf(lo, mus), 0, 1)
-        alpha_hi = scs.poisson.cdf(hi, mus)
-        alpha_intervals.append((alpha_lo, alpha_hi))
-
-    return alpha_cnts, alpha_expect, alpha_intervals
-
-
-def dist_norm(counts, alphas, **kwargs):
-    """
-    Gaussian central intervals compliant with `add_residual_plot`.
-    Using sqrt(N) residuals per bin.
-
-    Parameters
-    ----------
-    counts : array-like
-        The actual data counts.
-    alphas : array-like
-        Confidence levels for the central intervals that shall be computed.
-    kwargs :
-        'mean' : array-like
-            Expectation values for the poisson distribution.
-            Must have same length as `counts`.
-
-    Returns
-    -------
-    alpha_cnts : array-like
-        CDF value for each count.
-    alpha_expect : array-like
-        CDF value for each expectation value for the corresponding distribution
-        used per count (used for scaling in `add_residual_plot`).
-    alpha_intervals : list
-        List of low and high interval CDF values for the corresponding
-        distribution used per count. For each alpha, the list contains a tuple
-        `(lo, hi)` with `lo`, `hi` being arrays of CDF values with length
-        `len(counts)`.
-    """
-    mean = kwargs["mean"]
-    stddev = np.sqrt(mean)
-    valid = (stddev > 0.)
-    # Get alphas for counts and for the expectation values
-    alpha_cnts = np.zeros(len(counts), dtype=float)
-    alpha_expect = np.zeros_like(alpha_cnts)
-    alpha_cnts[valid] = scs.norm.cdf(counts[valid], mean[valid], stddev[valid])
-    alpha_expect[valid] = scs.norm.cdf(mean[valid], mean[valid], stddev[valid])
-    # Create intervals for each given alpha
-    alphas = np.unique(alphas)
-    if not np.all(np.logical_and(alphas > 0, alphas < 1)):
-        raise ValueError("Interval alphas must be in (0, 1).")
-    alpha_intervals = []
-    # Below is very explicit. Gaussian is always symmetric, so it would be the
-    # same result for: lo=(1-alpha)/2, hi=(1+alpha)/2=1-lo
-    for alpha in alphas:
-        lo, hi = np.zeros_like(alpha_cnts), np.zeros_like(alpha_cnts)
-        lo[valid], hi[valid] = scs.norm.interval(
-            alpha, mean[valid], stddev[valid])
-        lo[valid] = scs.norm.cdf(lo[valid], mean[valid], stddev[valid])
-        hi[valid] = scs.norm.cdf(hi[valid], mean[valid], stddev[valid])
-        alpha_intervals.append((lo, hi))
-
-    return alpha_cnts, alpha_expect, alpha_intervals
 
 
 def add_residual_plot(
@@ -179,8 +71,8 @@ def add_residual_plot(
 
     Example
     -------
-    >>> from script_collection.plots.residuals import (
-    >>>     add_residual_plot, dist_poisson)
+    >>> from script_collection.plots.residuals import add_residual_plot
+    >>> from script_collection.stats.distributions import dist_poisson
     >>> import matplotlib.pyplot as plt
     >>> counts = np.array([0, 0, 3, 3, 2, 0, 6, 7, 9, 10, 0, 13, 18, 24, 130])
     >>> mus = np.array([1, 2, 3, 4, 5, 0, 7, 8, 9, 10, 11, 12, 13, 14, 100])
