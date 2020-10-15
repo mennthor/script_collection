@@ -3,6 +3,7 @@
 """
 Contains random sampling methods.
 """
+import math
 import numpy as np
 import scipy.optimize as sco
 import scipy.stats as scs
@@ -92,6 +93,77 @@ def random_choice_2d_looped(rndgen, CDFs, size_per_cdf=None):
         u = rndgen.uniform(size=size_per_cdf)
         idx[i] = np.searchsorted(cdf_i, u, side="right")
     return idx
+
+
+def sample_lognorm(lo, hi, cutoff=None, size=None, rndstate=None):
+    """
+    Samples log uniformly from interval [hi, lo]. Also considers intervals
+    spanning zero or being in the negative range. If the interval crosses zero,
+    a cutoff must be provided to split the sampling into two intervals with
+    [lo, cutoff] and [cutoff, hi].
+
+    Parameters
+    ----------
+    lo, hi : float
+        Upper and lower border of the sampling range. Must not be inside
+        `[-cutoff, cutoff]`.
+    cutoff : float or None, optional
+        Cutoff towards zero if the given range includes zero. Is not used if
+        the range is only in negative or positive space. (default: None)
+    size : int or None, optional
+        Size of the sample, If `None`, a single number is returned, else a
+        ndarray. (default: `None`)
+    rndstate : `numpy.random.RandomState`, int or None, optional
+        A random state or seed put into `numpy.random.RandomState`.
+        (default: `None`)
+
+    Returns
+    -------
+    rvs : ndarray or float
+        Log-uniformly sampled numbers from the given range. If `size` was
+        `None`, a single number is returned, else a ndarray.
+    """
+    rnge = hi - lo
+    if not rnge > 0:
+        raise ValueError("Must provide range 'lo' < 'hi'.")
+    try:
+        math.log(abs(lo))
+        math.log(abs(hi))
+    except ValueError:
+        raise ValueError("Interval bounds must not be 0.")
+
+    rndgen = np.random.RandomState(rndstate)
+
+    # 3 cases: Only <0, only >0, including zero
+    # Only >=0, sample normally in positive log space
+    if hi > 0. and not lo < 0.:
+        rvs = scs.loguniform.rvs(
+            lo, hi, size=size, random_state=rndgen)
+    # Only <=0, sample abs range and add negative sign
+    elif not hi > 0. and lo < 0.:
+        rvs = -scs.loguniform.rvs(
+            abs(hi), abs(lo), size=size, random_state=rndgen)
+    # Crossing zero, sample negative portion separately and add sign
+    else:
+        if cutoff is None:
+            raise ValueError(
+                "Porived range includes zero, but no cutoff is given.")
+        if not cutoff > 0:
+            raise ValueError("Zero log 'cutoff' must be > 0.")
+        if abs(lo) < cutoff or abs(hi) < cutoff:
+            raise ValueError("Provided range ends inside cutoff.")
+
+        p = hi / rnge  # Relative size of spinup parameter range
+        _ntrials = 1 if size is None else size
+        _n_pos = scs.binom.rvs(_ntrials, p, random_state=rndgen)
+        rvs = np.zeros(_ntrials, dtype=float)
+        rvs[:_n_pos] = scs.loguniform.rvs(
+            cutoff, hi, size=_n_pos, random_state=rndgen)
+        rvs[_n_pos:] = -scs.loguniform.rvs(
+            cutoff, abs(lo), size=_ntrials - _n_pos, random_state=rndgen)
+        rndgen.shuffle(rvs)
+
+    return rvs[0] if size is None else rvs
 
 
 def rejection_sampling(pdf, bounds, n, fmax=None, random_state=None):
