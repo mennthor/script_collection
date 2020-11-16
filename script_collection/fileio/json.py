@@ -50,7 +50,11 @@ def serialize_ndarrays(d):
     Traverse through iterable object ``d`` and convert all occuring ndarrays
     to lists to make it JSON serializable.
 
-    Note: Better use the numpy types encoder class above.
+    Note
+    ----
+    Better use the `NumpyTypesEncoder` class. This method does not handle the
+    numpy data types within the arrays (eg. np.int cannot be serialized out of
+    the box).
 
     Parameters
     ----------
