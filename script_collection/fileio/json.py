@@ -26,23 +26,34 @@ class NumpyTypesEncoder(json.JSONEncoder):
     - https://stackoverflow.com/questions/50916422 and
     - https://docs.python.org/3/library/json.html#json.JSONEncoder.default
     """
-    _ints = (np.int_, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64,
-             np.uint8, np.uint16, np.uint32, np.uint64)
-    _floats = (np.float_, np.float16, np.float32, np.float64)
-    _bools = (np.bool_)
-    _arrays = (np.ndarray,)
+
+    def __init__(self, *args, **kwargs):
+        types = {k.lower(): t for k, t in np.core.numerictypes.allTypes.items()
+                 if isinstance(k, str)}
+        self._int = tuple(t for k, t in types.items() if "int" in k)
+        self._float = tuple(t for k, t in types.items()
+                            if "float" in k and "c" not in k)
+        self._complex = tuple(
+            t for k, t in types.items()
+            if ("complex" in k or k[0] == "c") and "char" not in k)
+        self._bool = tuple(t for k, t in types.items() if "bool" in k)
+        self._array = (np.ndarray, )
+        super().__init__(*args, **kwargs)
 
     def default(self, obj):
-        if isinstance(obj, self._ints):
-            return int(obj)
-        elif isinstance(obj, self._floats):
+        # In order I think they appear most often
+        if isinstance(obj, self._array):
+            return obj.tolist()  # Automagically handles all list entries too
+        elif isinstance(obj, self._float):
             return float(obj)
-        elif isinstance(obj, self._bools):
+        elif isinstance(obj, self._int):
+            return int(obj)
+        elif isinstance(obj, self._bool):
             return bool(obj)
-        elif isinstance(obj, self._arrays):
-            return obj.tolist()
+        elif isinstance(obj, self._complex):
+            return "{}+{}j".format(obj.real, obj.imag)
 
-        return json.JSONEncoder.default(self, obj)
+        return super().default(obj)
 
 
 def serialize_ndarrays(d):
