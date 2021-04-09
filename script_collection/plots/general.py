@@ -210,3 +210,62 @@ def hist_outline(x, ax, outl_kwargs={}, hist_kwargs={}):
     lc = ax.plot(np.r_[b[0], b, b[-1]], np.r_[0, h[0], h, 0], **outl_kwargs)
 
     return h, b, pc, lc
+
+
+def add_ellipsis(ax, x0, y0, r0, r1, logx=False, **plt_kwargs):
+    """
+    Add ellipsis to axis. Can handle lin-log plots (x-axis is log10).
+    Cannot handle rotations or y axis is on log scale.
+
+    Parameters
+    ----------
+    ax : axis
+        The matplotlib axis to draw on.
+    x0, y0 : float
+        The center coordinates of the ellipsis. If `logx` is `True`, `x0` must
+        be `>0`.
+    r0, r1 : float
+        The x and y radii of the ellipsis.
+        If `logx` is `True`, then this in log coordinates (so an exponential
+        width), else it is in normal linear coordinates.
+    logx : bool, optional (default: False)
+        Wether to draw the ellipse in log x-axis or lin x-axis
+
+    Returns
+    -------
+    l_lo, l_up : line collection
+        The drawn lines of the lower and upper ellipsis half.
+
+    Example
+    -------
+    ```
+    import matplotlib.pyplot as plt
+    fig, (axl, axr) = plt.subplots(1, 2, figsize=(8,3))
+    add_ell(axl, 1, 0, 0.75, 1, logx=True, c="k", label="Log ell")
+    add_ell(axl, 1, 0, 0.75, 1, logx=False, c="C3", label="Lin ell")
+    axl.set_xscale("log")
+    axl.set_xlim(1e-1, 1e1)
+    axl.set_ylim(-1.25, 1.25)
+    axl.set_title("Lin x scale")
+    add_ell(axr, 1, 0, 0.75, 1, logx=True, c="k", label="Log ell")
+    add_ell(axr, 1, 0, 0.75, 1, logx=False, c="C3", label="Lin ell")
+    axr.set_xlim(0, 2)
+    axr.set_ylim(-1.25, 1.25)
+    axr.set_title("Log x scale")
+    fig.tight_layout()
+    plt.show()
+    ```
+    """
+    # When x is log, just treat dx as it would be in exponent linear space
+    dx = np.linspace(-r0, r0, 250)
+    y_lo = y0 - r1 / r0 * np.sqrt(r0**2 - dx**2)
+    y_up = y0 + r1 / r0 * np.sqrt(r0**2 - dx**2)
+    if logx:
+        # But now convert x coords back to linear space
+        l_lo = ax.plot(10**(np.log10(x0) + dx), y_lo, **plt_kwargs)
+        l_up = ax.plot(10**(np.log10(x0) + dx), y_up, **plt_kwargs)
+    else:
+        # For linspace, everything normal
+        l_lo = ax.plot(x0 + dx, y_lo, **plt_kwargs)
+        l_up = ax.plot(x0 + dx, y_up, **plt_kwargs)
+    return l_lo, l_up
