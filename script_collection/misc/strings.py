@@ -204,3 +204,28 @@ def split_all_ext(fname):
         extensions.append(splitext[1])
         splitext = os.path.splitext(splitext[0])
     return splitext[0], extensions[::-1]
+
+
+def lead_zeros(num):
+    """
+    Returns the number of leading zeros to accomodate integer indices in fixed
+    length strings. Example: `i = {0, 1, 2, ..., 98, 99}` needs a single leading
+    zero to have index strings like `'00', '01', ..., '99'`.
+
+    Parameters
+    ----------
+    num : int
+        Positive integer representing the number of indices.
+        In the example above, this would be 100.
+
+    Returns
+    -------
+    nzeros : int
+        Number of leading zeros needed to contruct fixed length index strings.
+    fmt_str : str
+        A format string that can be used to construct the index string with the
+        proper fixed length index string.]
+        Can be used with `fmt_str.format(index)`.
+    """
+    nzeros = int(np.ceil(np.log10(num)))
+    return nzeros, "{{:0{0:d}d}}".format(nzeros)
