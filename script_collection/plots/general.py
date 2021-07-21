@@ -10,6 +10,7 @@ import subprocess as subprocess
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 
@@ -269,3 +270,80 @@ def add_ellipsis(ax, x0, y0, r0, r1, logx=False, **plt_kwargs):
         l_lo = ax.plot(x0 + dx, y_lo, **plt_kwargs)
         l_up = ax.plot(x0 + dx, y_up, **plt_kwargs)
     return l_lo, l_up
+
+
+def set_log10_ticks(ax, lo, hi, minor=False, fmter=(None, None)):
+    """
+    Sets nicely (NOT evenly) spaced ticks for the given axis in log10 scale.
+
+    Parameters
+    ----------
+    ax : matplotlib.axis.Axis
+        x or y axis to set the ticks for (eg. `plt.gca().xaxis`).
+    lo, hi : float
+        Upper and lower tick boundary.
+    minor : bool, optional (default: False)
+        If `True` also locate minor ticks.
+    fmter : tuple, optional (default: (None, None))
+        Custom formatters for major, minor ticks. Minor formatter is only used
+        if `minor` is `True`.
+    """
+    ndecs = np.ceil((np.log10(hi))) - np.floor((np.log10(lo)))
+    if ndecs < 1:
+        raise ValueError("[lo, hi] range needs to span a decade.")
+    fmt_maj = mticker.ScalarFormatter() if fmter[0] is None else fmter[0]
+    fmt_min = mticker.NullFormatter() if fmter[1] is None else fmter[1]
+
+    t_maj = mticker.LogLocator(  # E.g. [10, 20, 30, ..., 90, 90, 100]
+        base=10, subs=np.arange(0.1, 1., 0.1), numticks=ndecs + 1)
+    ax.set_major_locator(t_maj)
+    ax.set_major_formatter(fmt_maj)
+    t_min = mticker.LogLocator(  # E.g. [10, 11, 12, ..., 98, 99, 100]
+        base=10, subs=np.arange(0.01, 1., 0.01), numticks=ndecs + 1)
+    if minor:
+        ax.set_minor_locator(t_min)
+        ax.set_minor_formatter(fmt_min)
+
+
+def make_log_ticks(log_lo, log_hi, cut_lo=None, cut_hi=None):
+    """
+    Makes linear equally spaced major and minot tick steps in each decade.
+    Eg. between 10 and 100 makes major steps `[10, 20, ..., 90, 100]` and minors
+    `[10, 11, 12, ..., 98, 99, 100]`.
+
+    Note: The ticks need to be set using set_[x,y]ticks, but it seems,
+          matplotlib does not like this when using the minor ones...
+          THere is a working version using the `ticker` functions though.
+          See `set_log10_ticks` above.
+
+    Parameters
+    ----------
+    log_lo, log_hi : int
+        Lower, upper bounds in log10 scale (inclusive).
+    cut_lo, cut_hi : float
+        Actual lower, upper bounds in linear scale.
+
+    Returns
+    -------
+    major, minor : list
+        Major and minor tick lists. Minor ticks are space by `decade // 100`,
+        major ones by `decade // 10`.
+    """
+    if cut_lo is None:
+        cut_lo = 10**log_lo
+    if cut_hi is None:
+        cut_hi = 10**log_hi
+
+    ticks, minor = [cut_lo], [cut_lo]
+    ndecs = 10**np.arange(log_lo, log_hi + 1, 1)
+    for dec in ndecs:
+        if ticks[-1] > dec:
+            continue
+
+        step, step_min = dec // 10, dec // 100
+        ticks += list(np.arange(
+            ticks[-1] + step, min(dec, cut_hi) + step, step))
+        minor += list(np.arange(
+            minor[-1] + step_min, min(dec, cut_hi) + step_min, step_min))
+
+    return ticks, minor
