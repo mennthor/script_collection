@@ -157,3 +157,196 @@ def marginalize_hist(h, bins, axes):
         bins = None
 
     return h, bins
+
+
+def histogramdd_func(sample, rvals=None, bins=10, method="count"):
+    """
+    Compute the multidimensional histogram of some data.
+    Note: This is the same as scipy.stats.binned_stats_dd without some features
+        which I found after implementing this...
+        For my tests sets, this function is twice as fast however.
+
+    Parameters
+    ----------
+    sample : (N, D) array, or (D, N) array_like
+        The data to be histogrammed.
+        Note the unusual interpretation of sample when an array_like:
+        * When an array, each row is a coordinate in a D-dimensional space -
+          such as ``histogramdd(np.array([p1, p2, p3]))``.
+        * When an array_like, each element is the list of values for single
+          coordinate - such as ``histogramdd((X, Y, Z))``.
+        The first form should be preferred.
+    rvals : (N, ) ndarray or None, optional (default: None)
+        Data to be used to determine the value of each histogram cell. If
+        `None`, `method` must be 'count'.
+    bins : sequence or int, optional
+        The bin specification:
+        * A sequence of arrays describing the monotonically increasing bin
+          edges along each dimension.
+        * The number of bins for each dimension (nx, ny, ... =bins)
+        * The number of bins for all dimensions (nx=ny=...=bins).
+    method : str or callable, optional (default: 'count')
+        Can be either 'count', 'min', 'max', 'mean', 'median' or a callable
+        that takes a 1D ndarray subset of `rvals` as an argument and reduces it
+        to a single number, which is then stored in the histogram.
+        Eg. giving 'max' is equivalent to `lambda x: np.max(x)`.
+        If 'count' is given, values in `rvals` are ignored, because they are
+        simply counted and the method acts as the usual `np.histogramdd`.
+
+    Returns
+    -------
+    H : ndarray
+        The multidimensional histogram of sample x. It has shape
+        `(len(bins) - 1 for bins in edges)` per dimension.
+    edges : list
+        A list of D arrays describing the bin edges for each dimension.
+    indices : ndarray
+        Array of same shape as `H` having a list of indices of input points
+        falling into each bin referenced by `H`.
+
+    Examples
+    --------
+    >>> r = np.random.randn(100, 3)
+    >>> H, edges = histogramdd_func(r, bins = (5, 8, 4), method='count')
+    >>> H.shape, edges[0].size, edges[1].size, edges[2].size
+    ((5, 8, 4), 6, 9, 5)
+    >>> np.all(H == np.histogramdd(r, bins = (5, 8, 4))))
+    True
+    >>> r.max() == histogramdd_func(r, bins = (5, 8, 4), method='max')[0].max()
+    True
+    >>> r.min() == histogramdd_func(r, bins = (5, 8, 4), method='min')[0].min()
+    True
+    """
+    # We basically steal everything from numpy.histogrammdd
+    try:
+        # Sample is an ND-array.
+        N, D = sample.shape
+    except (AttributeError, ValueError):
+        # Sample is a sequence of 1D arrays.
+        sample = np.atleast_2d(sample).T
+        N, D = sample.shape
+
+    if rvals is None:
+        if method != "count":
+            raise ValueError("`method` is not 'count' but `rvals` is None.")
+    else:
+        rvals = np.atleast_1d(rvals)
+        if len(rvals.shape) != 1 or len(rvals) != N:
+            raise ValueError("'rvals' array must be a 1D array of length N.")
+
+    nbin = np.empty(D, int)
+    edges = D * [None]
+    dedges = D * [None]
+
+    try:
+        M = len(bins)
+        if M != D:
+            raise ValueError(
+                "The dimension of bins must be equal to the dimension of the "
+                " sample x.")
+    except TypeError:
+        # bins is an integer
+        bins = D * [bins]
+
+    # Normalize the range_ argument
+    range_ = (None,) * D
+
+    # Create edge arrays
+    for i in range(D):
+        if np.ndim(bins[i]) == 0:
+            if bins[i] < 1:
+                raise ValueError(
+                    "`bins[{}]` must be positive, when an integer".format(i))
+            smin, smax = _get_outer_edges(sample[:,i], range_[i])
+            try:
+                n = operator.index(bins[i])
+
+            except TypeError as e:
+                raise TypeError(
+                    "`bins[{}]` must be an integer, when a scalar".format(i)
+                ) from e
+
+            edges[i] = np.linspace(smin, smax, n + 1)
+        elif np.ndim(bins[i]) == 1:
+            edges[i] = np.asarray(bins[i])
+            if np.any(edges[i][:-1] > edges[i][1:]):
+                raise ValueError("`bins[{}]` must be monotonically "
+                                 "increasing, when an array".format(i))
+        else:
+            raise ValueError(
+                "`bins[{}]` must be a scalar or 1d array".format(i))
+
+        nbin[i] = len(edges[i]) + 1  # includes an outlier on each end
+        dedges[i] = np.diff(edges[i])
+
+    # Compute the bin number each sample falls into.
+    Ncount = tuple(
+        # avoid np.digitize to work around gh-11022
+        np.searchsorted(edges[i], sample[:, i], side="right")
+        for i in range(D)
+    )
+
+    # Using searchsorted, values that fall on an edge are put in the right bin.
+    # For the rightmost bin, we want values equal to the right edge to be
+    # counted in the last bin, and not as an outlier.
+    for i in range(D):
+        # Find which points are on the rightmost edge.
+        on_edge = (sample[:, i] == edges[i][-1])
+        # Shift these points one bin to the left.
+        Ncount[i][on_edge] -= 1
+
+    # Compute the sample indices in the flattened histogram matrix.
+    # This raises an error if the array is too large.
+    xy = np.ravel_multi_index(Ncount, nbin)
+
+    # Compute the given metric for all samples falling into each bin and assign
+    # it to the flattened histmat.
+    if method == "count":
+        hist = np.bincount(xy, minlength=nbin.prod())
+    else:
+        # Select the method to reduce all cell entries
+        if isinstance(method, str):
+            if method == "min":
+                _reduce = np.min
+            elif method == "max":
+                _reduce = np.max
+            elif method == "mean":
+                _reduce = np.mean
+            elif method == "median":
+                _reduce = np.median
+            else:
+                raise ValueError("If str, 'method' can be one of 'count', "
+                                 "'min', max', 'mean', 'median'.")
+        elif isinstance(method, callable):
+            _reduce = method
+        else:
+            raise TypeError("'methods' must be either a str or a callable, "
+                            "'{}' was given.".format(type(method)))
+
+        # We want to obtain a reasonably quick way to group all samples per bin.
+        # np.bincount does it in C, by allocating a new array and simply adding
+        # the indices in a single pass. Here we can speed things up by using
+        # binary search to obtain all places in xy where a new index is
+        # introduced, avoiding masking the entire array over and over.
+        hist = np.zeros(nbin.prod(), dtype=float) * np.nan
+        xy_srt_idx = np.argsort(xy)
+        xy_srt = xy[xy_srt_idx]
+        xy_uni = np.unique(xy_srt)
+        idx_hi = np.searchsorted(xy_srt, xy_uni, side="right")
+        idx_hi = np.r_[0, idx_hi]
+        for j, (lo, hi) in enumerate(zip(idx_hi[:-1], idx_hi[1:])):
+            hist[xy_uni[j]] = _reduce(rvals[xy_srt_idx[lo:hi]])
+
+    # Shape into a proper matrix
+    hist = hist.reshape(nbin)
+
+    # This preserves the (bad) behavior observed in gh-7845, for now.
+    hist = hist.astype(float, casting="safe")
+
+    # Remove outliers (indices 0 and -1 for each dimension).
+    core = D * (slice(1, -1),)
+    hist = hist[core]
+
+    if (hist.shape != nbin - 2).any():
+        raise RuntimeError("Internal Shape Error")
+    return hist, edges
