@@ -161,6 +161,13 @@ def diag_indices_ndim(nelems, ndim, k=1):
         `k` away from any diagonal index in absolute norm
         `sum(abs(idx - idx_diag))`.
 
+    Returns
+    -------
+    idx : ndarray
+        Shape (nvals, ndim). Each row holds the indes for each dimension to
+        select one off-diagonal element.
+        All diagonal indices `(j, ..., j)` are also included.
+
     Example
     -------
     diag_indices_ndim(3, ndim=2, k=1)
