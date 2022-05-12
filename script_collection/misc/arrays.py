@@ -142,3 +142,43 @@ def reflect_at_bounds(arr, bounds):
                 ref[i, :, ax] = 2. * bounds[ax, 0] - ref[i, :, ax]
 
     return ref
+
+
+def diag_indices_ndim(nelems, ndim, k=1):
+    """
+    Returns indices to select diagonal and off-diagonal items in a ND square
+    matrix with `nelems` elements per dimension (side-length).
+
+    Parameters
+    ----------
+    nelems : int
+        Side length of the matrix. It's assumed to be square so the side-length
+        applies for alll dimensions.
+    ndim : int
+        Number of dimensions of the matrix.
+    k : int, optional (default: 1)
+        Width of off-diagonal. Selects all elements that are no further than
+        `k` away from any diagonal index in absolute norm
+        `sum(abs(idx - idx_diag))`.
+
+    Example
+    -------
+    diag_indices_ndim(3, ndim=2, k=1)
+    >>> array([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2], [2, 1], [2, 2]])
+    idx = diag_indices_ndim(10, ndim=2, k=1)
+    plt.scatter(idx[:, 0], idx[:, 1])
+    plt.show()
+    """
+    # First create all valid combination we can travel from each diag point
+    off_idx = np.array(list(product(*[np.arange(-k, k + 1) for _ in range(ndim)])))
+    # Using the taxi norm, we can select the proper no. of off diags
+    taxi = np.sum(np.abs(off_idx), axis=1)
+    off_idx = off_idx[taxi <= k]
+
+    # Get the strating points aka diagonal indices per dim
+    diag_idx = np.diag_indices(nelems, ndim=ndim)
+
+    # Combine into unique, in-bound absolute indices
+    abs_idx = np.concatenate([didx + off_idx for didx in list(zip(*diag_idx))])
+    abs_idx = np.unique(abs_idx, axis=0)
+    return abs_idx[~np.any((abs_idx < 0) | (abs_idx > nelems - 1), axis=1)]
